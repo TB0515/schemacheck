@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "properties": {
+    "ext": {
+      "$ref": "other.json#/x"
+    },
+    "c": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Node"
+        }
+      ]
+    },
+    "n": {
+      "$ref": "#/$defs/Node"
+    }
+  },
+  "required": [
+    "ext",
+    "c",
+    "n"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "Node": {
+      "type": "object",
+      "properties": {
+        "next": {
+          "$ref": "#/$defs/Node"
+        }
+      },
+      "required": [
+        "next"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

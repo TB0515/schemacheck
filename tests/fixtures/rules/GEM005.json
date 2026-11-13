@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "a": {
+      "anyOf": [
+        {
+          "const": "markdown"
+        },
+        {
+          "const": "json"
+        }
+      ]
+    }
+  },
+  "required": [
+    "a"
+  ],
+  "additionalProperties": false
+}

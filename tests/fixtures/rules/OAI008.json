@@ -1,0 +1,96 @@
+{
+  "type": "object",
+  "properties": {
+    "p": {
+      "type": "object",
+      "properties": {
+        "p": {
+          "type": "object",
+          "properties": {
+            "p": {
+              "type": "object",
+              "properties": {
+                "p": {
+                  "type": "object",
+                  "properties": {
+                    "p": {
+                      "type": "object",
+                      "properties": {
+                        "p": {
+                          "type": "object",
+                          "properties": {
+                            "p": {
+                              "type": "object",
+                              "properties": {
+                                "p": {
+                                  "type": "object",
+                                  "properties": {
+                                    "p": {
+                                      "type": "object",
+                                      "properties": {
+                                        "p": {
+                                          "type": "object",
+                                          "properties": {},
+                                          "required": [],
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "required": [
+                                        "p"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "required": [
+                                    "p"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": [
+                                "p"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "p"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "p"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "p"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "p"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "p"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "p"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "p"
+  ],
+  "additionalProperties": false
+}

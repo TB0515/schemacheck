@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "city": {
+      "type": "string"
+    },
+    "opts": {
+      "type": "object",
+      "properties": {
+        "deep": {
+          "type": "boolean"
+        },
+        "units": {
+          "type": "string",
+          "enum": [
+            "c",
+            "f"
+          ]
+        }
+      },
+      "required": [
+        "deep",
+        "units"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "city",
+    "opts"
+  ],
+  "additionalProperties": false
+}

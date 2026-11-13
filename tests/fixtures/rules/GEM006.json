@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "n": {
+      "type": "integer",
+      "exclusiveMinimum": 0
+    },
+    "t": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "n",
+    "t"
+  ],
+  "additionalProperties": false
+}

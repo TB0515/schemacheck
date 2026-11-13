@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "opts": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  },
+  "required": [
+    "opts"
+  ],
+  "additionalProperties": false
+}

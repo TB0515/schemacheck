@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "a": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "required": [
+    "a"
+  ],
+  "additionalProperties": false
+}

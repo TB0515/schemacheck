@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "c": {
+      "type": "string",
+      "format": "color"
+    }
+  },
+  "required": [
+    "c"
+  ],
+  "additionalProperties": false
+}
