@@ -1,14 +1,78 @@
 # schemacheck
 
-Offline linter and fixer that tells you whether your LLM/MCP tool JSON Schemas will be rejected by **OpenAI strict mode**, **Gemini**, or **Anthropic**, with the JSON Pointer of each problem, and can rewrite them into one form all of them accept.
+**Find out which of OpenAI strict, Gemini and Anthropic will reject your tool's JSON Schema, offline, and get one fixed schema that all of them accept.**
 
-> Built and maintained by autonomous AI agents at Kiln, an AI-only company. No human wrote this code. See [AI_DISCLOSURE.md](AI_DISCLOSURE.md).
+> Built and maintained by autonomous AI agents at Kiln, an AI-only company. No human wrote this code or this README. See [AI_DISCLOSURE.md](AI_DISCLOSURE.md).
 
-No network calls, no API keys, no runtime dependencies (Python >= 3.11, standard library only).
+For people writing MCP servers and agent tools who keep finding that one provider rejects a schema another accepts (`$ref`/`$defs`, `anyOf`, missing `additionalProperties: false`, stray `$schema` keys). No network calls, no API keys, no runtime dependencies (Python >= 3.11, standard library only).
+
+## 30-second quickstart
+
+```sh
+git clone https://github.com/TB0515/schemacheck && cd schemacheck
+uv run schemacheck examples/tools.json                       # check (exit 1 if errors)
+uv run schemacheck --fix examples/tools.json > fixed.json    # write a fixed copy
+uv run schemacheck fixed.json                                # re-check (exit 0)
+```
+
+Without cloning: `uvx --from git+https://github.com/TB0515/schemacheck schemacheck tools.json`.
+
+**Before** (`examples/tools.json`, an MCP `tools/list` result with a `$schema` key, a `$ref`, no `additionalProperties`, an optional property):
+
+```
+examples/tools.json:/tools/0/inputSchema: [openai-strict] OAI001 Every object needs additionalProperties: false in OpenAI strict mode (...)
+examples/tools.json:/tools/0/inputSchema/properties/filter: [openai-strict] OAI002 All keys in properties must be listed in required in OpenAI strict mode ('filter') (...)
+examples/tools.json:/tools/0/inputSchema/$schema: [gemini] GEM001 $schema is rejected by Gemini in function parameters (...)
+examples/tools.json:/tools/0/inputSchema/$defs: [gemini] GEM002 $ref / $defs are rejected by Gemini in function declarations; inline them ($defs) (...)
+examples/tools.json:/tools/0/inputSchema/properties/filter/$ref: [gemini] GEM002 ... ($ref)
+examples/tools.json:/tools/0/inputSchema/$defs/Filter: [openai-strict] OAI001 ...
+examples/tools.json:/tools/0/inputSchema/$defs/Filter/properties/state: [openai-strict] OAI002 ...
+```
+
+(URLs shortened here; the real output ends each line with the doc link.)
+
+**After** `--fix` (stderr says `note: dropped '$schema' at /`): `$schema` and `$defs` are gone, `Filter` is inlined, every object has `additionalProperties: false`, and every property is in `required`. Re-checking prints nothing and exits 0 (`--json` prints `{"issues":[]}`). Note the fix makes optional parameters required, as OpenAI strict mode demands; it does not add nullability.
+
+## How is this different from schemafit?
+
+[schemafit](https://github.com/OrionArchitekton/schemafit) is the closest existing tool, and it is more mature than we are. It repairs per provider; we produce one cross-provider output. What we offer on top:
+
+- **Rules cited and checked against the docs.** We compared all 18 rules to the providers' documentation and to schemafit's output: [docs/rule-verification.md](docs/rule-verification.md). Result: 8 CONFIRMED by a verbatim doc sentence, 10 WEAKLY SUPPORTED, 0 contradicted. That report was written by an AI agent; read it before trusting it.
+- **Tool-envelope awareness**: OpenAI, Anthropic, MCP and Gemini wrappers, MCP `tools/list` results and JSON-RPC responses, with JSON Pointers into your original file.
+- **Checks schemafit did not flag in our fixtures**: tool-name rules (ANT002), `$schema` (GEM001), `const`/non-string `enum` for Gemini (GEM003). The same comparison shows schemafit flagging things we do not, such as `pattern` and `exclusiveMinimum` under Anthropic. We have not benchmarked beyond those fixtures.
+
+### Rules that are only WEAKLY SUPPORTED
+
+"Weakly supported" means the only evidence is a third-party issue/PR, a summary-only doc read, or inference from the docs being silent. These rules may be too strict or too lenient:
+
+- **Gemini (all six, GEM001-GEM006)**: based on issue/PR reports and the Gemini field list. The docs are partly conflicting: Gemini's `parametersJsonSchema` accepts fuller JSON Schema, so `$ref`/`$defs`/type arrays may be fine on that path. GEM005 (`anyOf`) and GEM006 are warnings for this reason.
+- **OAI007** (nested `$ref` forms): backed by a real OpenAI error quoted in an SDK PR, not by the OpenAI docs.
+- **ANT001** (root `type: object`), **ANT005** (recursive/external `$ref`, `allOf`+`$ref`), **ANT006** (`format` list): the Anthropic page text was only available as a summary.
+
+CONFIRMED: OAI001, OAI002, OAI004, OAI005, OAI008, ANT002, ANT003, ANT004. Known gaps: we do not check OpenAI's total property/enum-size limits, Anthropic's complexity limits, or objects with no `properties`. Details in the report.
+
+## Use in CI (GitHub Action)
+
+```yaml
+# .github/workflows/schemacheck.yml
+name: schemacheck
+on: [push, pull_request]
+jobs:
+  schemacheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: TB0515/schemacheck@main
+        with:
+          files: "schemas/*.json tools.json"   # space-separated, globs allowed
+          profile: all                         # optional: openai-strict | gemini | anthropic | anthropic-strict | all
+```
+
+The job fails when schemacheck exits 1 (any error-severity issue). The action is a composite action that installs `uv` and runs the CLI from the action's own checkout. **Not tested on a real GitHub runner** (we cannot run workflows from here); see "Limitations of the action" under Status.
 
 ## Why
 
-One provider rejects schemas that another accepts (`$ref`/`$defs`, `anyOf`, missing `additionalProperties: false`, stray `$schema` keys). At least four projects have written private sanitizers for this (MCP TypeScript SDK PR #1082, opencode PR #12911, livekit/agents #4334). schemacheck checks all providers in one pass and produces one fixed output.
+One provider rejects schemas that another accepts. At least four projects have written private sanitizers for this (MCP TypeScript SDK PR #1082, opencode PR #12911, livekit/agents #4334). schemacheck checks all providers in one pass and produces one fixed output.
 
 ## Install / run
 
@@ -97,7 +161,9 @@ Where schemacheck differs:
 
 ## Status
 
-Early (v0.1). Rules marked "verified = no" are inferred or summary-sourced and may change. A GitHub Action is planned.
+Early (v0.1). Rules marked "verified = no" are inferred or summary-sourced and may change.
+
+**Limitations of the action:** `action.yml` has not run on a real GitHub runner. Locally we ran its exact command line (`schemacheck --profile "$SC_PROFILE" $SC_FILES`) via `uv run` (exit 1 on `examples/tools.json`, exit 0 on the fixed file) and parsed the YAML. Untested: `astral-sh/setup-uv@v5` inside a composite action, `uvx --from "$GITHUB_ACTION_PATH"` on a runner (uvx was blocked in our sandbox), and glob expansion on a runner. It has no `--fix` mode.
 
 ## Development
 

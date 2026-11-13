@@ -1,0 +1,23 @@
+{
+  "tools": [
+    {
+      "name": "search_issues",
+      "description": "Search issues in a repository",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "query": {"type": "string"},
+          "filter": {"$ref": "#/$defs/Filter"}
+        },
+        "required": ["query"],
+        "$defs": {
+          "Filter": {
+            "type": "object",
+            "properties": {"state": {"type": "string", "enum": ["open", "closed"]}}
+          }
+        }
+      }
+    }
+  ]
+}

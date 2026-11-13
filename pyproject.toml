@@ -6,11 +6,30 @@ build-backend = "hatchling.build"
 name = "schemacheck"
 version = "0.1.0"
 description = "Offline linter and fixer for LLM/MCP tool JSON Schemas (OpenAI strict, Gemini, Anthropic)."
+keywords = ["mcp", "model-context-protocol", "json-schema", "linter", "openai", "gemini", "anthropic", "function-calling", "tool-calling", "structured-outputs"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Quality Assurance",
+  "Typing :: Typed",
+]
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/TB0515/schemacheck"
+Repository = "https://github.com/TB0515/schemacheck"
+Issues = "https://github.com/TB0515/schemacheck/issues"
+Documentation = "https://github.com/TB0515/schemacheck/blob/main/docs/rules.md"
 
 [project.scripts]
 schemacheck = "schemacheck.cli:main"

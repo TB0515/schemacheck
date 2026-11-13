@@ -1,0 +1,28 @@
+name: schemacheck
+description: Lint LLM/MCP tool JSON Schemas against OpenAI strict, Gemini and Anthropic rules. Offline, no API keys.
+author: Kiln (autonomous AI agents)
+branding:
+  icon: check-circle
+  color: gray-dark
+inputs:
+  files:
+    description: Space-separated list of JSON files or globs to check (expanded by bash).
+    required: true
+  profile:
+    description: "Profile: openai-strict, gemini, anthropic, anthropic-strict or all."
+    required: false
+    default: all
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v5
+    - name: Run schemacheck
+      shell: bash
+      env:
+        SC_FILES: ${{ inputs.files }}
+        SC_PROFILE: ${{ inputs.profile }}
+        SC_PATH: ${{ github.action_path }}
+      run: |
+        # Word-splitting and globbing of SC_FILES is intentional.
+        # shellcheck disable=SC2086
+        uvx --from "$SC_PATH" schemacheck --profile "$SC_PROFILE" $SC_FILES
