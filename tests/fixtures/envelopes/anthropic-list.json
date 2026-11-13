@@ -1,0 +1,31 @@
+[
+ {
+  "name": "a",
+  "description": "d",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "x": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "x"
+   ]
+  }
+ },
+ {
+  "name": "b",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "y": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "y"
+   ]
+  }
+ }
+]
