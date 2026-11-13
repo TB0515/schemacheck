@@ -1,0 +1,45 @@
+[
+ {
+  "name": "t",
+  "description": "test tool",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "target": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/User"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Target"
+    }
+   },
+   "required": [
+    "target"
+   ],
+   "additionalProperties": false,
+   "$defs": {
+    "User": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "string",
+       "description": "id"
+      },
+      "friend": {
+       "$ref": "#/$defs/User"
+      }
+     },
+     "required": [
+      "id",
+      "friend"
+     ],
+     "additionalProperties": false
+    }
+   }
+  }
+ }
+]
