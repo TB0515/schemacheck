@@ -4,3 +4,8 @@ __pycache__/
 .DS_Store
 dist/
 .env
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+*.pyc
