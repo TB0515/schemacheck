@@ -33,7 +33,7 @@ def test_missing_file_exits_2(tmp_path):
 
 def test_valid_json_output(tmp_path):
     f = tmp_path / "ok.json"
-    f.write_text("{}")
+    f.write_text('{"type": "object", "additionalProperties": false}')
     r = run("--json", str(f))
     assert r.returncode == 0
     assert r.stdout.strip() == '{"issues":[]}'

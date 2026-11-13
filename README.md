@@ -1,39 +1,103 @@
 # schemacheck
 
-Offline linter and fixer that checks LLM/MCP tool JSON Schemas against OpenAI strict mode, Gemini, and Anthropic rules, for people who write MCP servers and agent tools.
+Offline linter and fixer that tells you whether your LLM/MCP tool JSON Schemas will be rejected by **OpenAI strict mode**, **Gemini**, or **Anthropic**, with the JSON Pointer of each problem, and can rewrite them into one form all of them accept.
 
-> Built and maintained by autonomous AI agents at Kiln, an AI-only company. No human wrote this code. See AI_DISCLOSURE.md.
+> Built and maintained by autonomous AI agents at Kiln, an AI-only company. No human wrote this code. See [AI_DISCLOSURE.md](AI_DISCLOSURE.md).
+
+No network calls, no API keys, no runtime dependencies (Python >= 3.11, standard library only).
 
 ## Why
 
-One provider rejects schemas that another accepts (`$ref`/`$defs`, `anyOf`, missing `additionalProperties: false`, stray `$schema` keys). At least four projects have written private sanitizers for these rejections (MCP TS SDK PR #1082, opencode PR #12911, livekit/agents #4334), and no existing OSS tool checks cross-provider compatibility. schemacheck is meant to be that tool: a CLI with JSON output, exit codes, a `--fix` mode, and (later) a GitHub Action.
+One provider rejects schemas that another accepts (`$ref`/`$defs`, `anyOf`, missing `additionalProperties: false`, stray `$schema` keys). At least four projects have written private sanitizers for this (MCP TypeScript SDK PR #1082, opencode PR #12911, livekit/agents #4334). schemacheck checks all providers in one pass and produces one fixed output.
 
-## Quickstart
+## Install / run
 
-Run straight from GitHub (no registry needed):
-
-```sh
-uvx --from git+https://github.com/TB0515/schemacheck schemacheck --version
-```
-
-From a local checkout:
+Straight from GitHub (distributed from GitHub only, not PyPI):
 
 ```sh
-uv run schemacheck --help
-echo '{}' > /tmp/x.json && uv run schemacheck --json /tmp/x.json   # {"issues":[]}
+uvx --from git+https://github.com/TB0515/schemacheck schemacheck tools.json
+pipx run --spec git+https://github.com/TB0515/schemacheck schemacheck tools.json
 ```
+
+From a checkout: `uv run schemacheck tools.json`.
 
 ## Usage
 
 ```
-schemacheck [--profile {openai-strict,gemini,anthropic,all}] [--fix] [--json] FILE...
+schemacheck [--profile openai-strict|gemini|anthropic|anthropic-strict|all] [--fix] [--json] FILE...
 ```
 
-Exit codes: 0 no issues, 1 issues found, 2 usage error / unreadable file / invalid JSON. The rules and `--fix` are not implemented yet; the CLI currently only parses each file.
+`FILE` may be `-` for stdin. Default profile is `all` (= `openai-strict` + `gemini` + `anthropic`). `anthropic-strict` (Anthropic strict tools) is opt-in because it forbids constraints like `minimum` that plain Anthropic tools accept.
+
+**Accepted inputs** (auto-detected): a bare JSON Schema; a list of tools in OpenAI (chat `{"type":"function","function":{...}}` or Responses-style flat), Anthropic (`input_schema`), MCP (`inputSchema`) or Gemini (`functionDeclarations`) form; an MCP `tools/list` result `{"tools":[...]}`, a JSON-RPC response `{"result":{"tools":[...]}}`, or a request body with a `tools` array.
+
+**Exit codes:** `0` no errors, `1` at least one error-severity issue, `2` usage error, unreadable file, invalid JSON, or unrecognized shape (nothing else is printed to stdout in that case). Warning-severity issues (GEM005, GEM006) are printed but do not change the exit code.
+
+### Check
+
+```
+$ schemacheck tools.json
+tools.json:/tools/0/inputSchema/properties/opts: [openai-strict] OAI001 Every object needs additionalProperties: false in OpenAI strict mode (https://developers.openai.com/api/docs/guides/structured-outputs)
+```
+
+Format: `FILE:/json/pointer: [profile] RULE-ID message (doc URL)`. The pointer points into the original file, envelope included.
+
+`--json` prints `{"issues":[{"file","tool","path","profile","rule","message","doc_url","fixable"}]}`; a clean run prints exactly `{"issues":[]}`.
+
+### Fix
+
+`--fix` writes the fixed document to **stdout** and never edits files. The outer shape is preserved (MCP, JSON-RPC, OpenAI, Anthropic, Gemini or bare). With several files, the output is a JSON object keyed by file name. Unfixed issues go to stderr (`unfixed: ...`) with exit 1; lossy changes are listed as `note:` lines on stderr.
+
+```sh
+schemacheck --fix tools.json > tools.fixed.json
+schemacheck --profile all tools.fixed.json   # re-check
+```
+
+What `--fix` does, only for rules marked fixable: adds `additionalProperties: false`; lists every property in `required` (note: this makes optional parameters required, as OpenAI strict mode demands; it does not add nullability); inlines non-recursive local `$ref`s and removes `$defs`; removes `$schema`; turns a string `const` into a one-value `enum`; renames `oneOf` to `anyOf`; collapses `["T","null"]` to `T` + `nullable: true` for Gemini; drops keywords the provider does not support (Gemini-unknown keywords, `anthropic-strict` size constraints/formats and non-enum `const`/non-string `enum`); adds a missing root `type: object`; replaces illegal characters in tool names with `_`. It does not fix recursive or external `$ref`, root `anyOf`, unsupported combinators under OpenAI, or nesting depth; those are reported. The fix is idempotent.
+
+## Rules
+
+Every rule cites an official doc or a real failing issue/PR. Full details in [docs/rules.md](docs/rules.md). "Verified = no" means the source quote was summary-only or the rule is inferred.
+
+| ID | Profile | Severity | Rule | Fixable | Source |
+|---|---|---|---|---|---|
+| OAI001 | openai-strict | error | every object needs `additionalProperties: false` | yes | [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) |
+| OAI002 | openai-strict | error | every property must be in `required` | yes | [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) |
+| OAI004 | openai-strict | error | root must be an object, no root `anyOf` | no | [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) |
+| OAI005 | openai-strict | error | `allOf`, `not`, `dependentRequired`, `dependentSchemas`, `if`/`then`/`else` unsupported | no | [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) |
+| OAI007 | openai-strict | error | `$ref` must be `#`, `#/$defs/X` or `#/definitions/X` | yes | [MCP TS SDK PR #1082](https://github.com/modelcontextprotocol/typescript-sdk/pull/1082) |
+| OAI008 | openai-strict | error | more than 10 levels of nesting | no | [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) |
+| GEM001 | gemini | error | `$schema` rejected | yes | [livekit/agents #4334](https://github.com/livekit/agents/issues/4334) |
+| GEM002 | gemini | error | `$ref` / `$defs` rejected | yes | [opencode PR #12911](https://github.com/anomalyco/opencode/pull/12911) |
+| GEM003 | gemini | error | `const` rejected; `enum` only for strings | yes | [opencode PR #12911](https://github.com/anomalyco/opencode/pull/12911) |
+| GEM004 | gemini | error | `oneOf` rejected | yes | [opencode PR #12911](https://github.com/anomalyco/opencode/pull/12911) |
+| GEM005 | gemini | warning | `anyOf` reported rejected/limited (verified = no) | no | [opencode PR #12911](https://github.com/anomalyco/opencode/pull/12911) |
+| GEM006 | gemini | warning | keyword not in Gemini's Schema field list (verified = no) | yes | [Gemini API reference](https://aistudio.google.com/api-reference/caching) |
+| ANT001 | anthropic | error | root must be `type: object` (verified = no) | yes | [Anthropic tool use](https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use) |
+| ANT002 | anthropic | error | tool name must match `^[a-zA-Z0-9_-]{1,128}$` | yes | [Anthropic tool use](https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use) |
+| ANT003 | anthropic-strict | error | `additionalProperties: false` on every object (verified = no) | yes | [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) |
+| ANT004 | anthropic-strict | error | no `minimum`/`maximum`/`multipleOf`/`minLength`/`maxLength`, `minItems` only 0/1 (verified = no) | yes | [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) |
+| ANT005 | anthropic-strict | error | no recursive schemas, external `$ref`, or `allOf` with `$ref` (verified = no) | no | [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) |
+| ANT006 | anthropic-strict | error | only a fixed list of string `format`s (verified = no) | yes | [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) |
+
+## Prior art
+
+We are not the first. Please look at these too; they are good, and in some ways better.
+
+- **[schemafit](https://github.com/OrionArchitekton/schemafit)**: a bare-schema linter with per-provider repair. It is more mature than schemacheck and, being a per-provider repairer, can tailor the repair to each provider. We have not benchmarked rule coverage against it, so it may catch things we miss.
+- **mcp-lint** (npm): MCP-focused and checks live servers. If you want to test a running MCP server (connection, handshake, the tools it actually advertises), it does that and schemacheck does not; we are offline-only.
+- **tool-schema**: a converter between provider tool formats. If you need to translate a tool definition from one provider's format to another, use it; schemacheck checks and repairs but does not convert formats.
+
+Where schemacheck differs:
+
+- **Tool-envelope awareness**: it understands OpenAI, Anthropic, MCP and Gemini tool wrappers and finds the schema inside them, instead of requiring a bare schema.
+- **MCP `tools/list` input**: you can pipe a `tools/list` response or JSON-RPC result straight in.
+- **One cross-provider `--fix` output**: a single rewrite that all selected profiles accept, rather than one repair per provider.
+- **JSON-Pointer paths into the original file**, including the envelope, so issues are locatable in the file you actually have.
 
 ## Status
 
-pre-alpha. The CLI surface is stubbed; no rules yet.
+Early (v0.1). Rules marked "verified = no" are inferred or summary-sourced and may change. A GitHub Action is planned.
 
 ## Development
 
