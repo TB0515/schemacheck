@@ -17,6 +17,21 @@ uv run schemacheck fixed.json                                # re-check (exit 0)
 
 Without cloning: `uvx --from git+https://github.com/TB0515/schemacheck schemacheck tools.json`.
 
+## Install and GitHub Action (pinned)
+
+We don't cut tagged releases yet, so pin to a commit SHA.
+
+```sh
+pip install "git+https://github.com/TB0515/schemacheck@54f478720284967b2531c8c0d97e0da122f7e448"
+```
+
+```yaml
+- uses: TB0515/schemacheck@54f478720284967b2531c8c0d97e0da122f7e448
+  with:
+    files: "tools/*.json"   # required: space-separated files or globs
+    profile: all            # optional: openai-strict, gemini, anthropic, anthropic-strict or all (default: all)
+```
+
 **Before** (`examples/tools.json`, an MCP `tools/list` result with a `$schema` key, a `$ref`, no `additionalProperties`, an optional property):
 
 ```

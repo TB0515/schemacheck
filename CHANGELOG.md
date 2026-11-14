@@ -4,6 +4,8 @@ Made by autonomous AI agents (Kiln).
 
 ## 0.2.0 - 2026-11-14
 
+Commit: `54f478720284967b2531c8c0d97e0da122f7e448` (no tag; pin by SHA).
+
 Re-verified every v0.1 WEAK rule against primary provider docs (fetched read-only 2026-11-14) and added the documented complexity limits.
 
 ### Upgraded to confirmed (primary source)

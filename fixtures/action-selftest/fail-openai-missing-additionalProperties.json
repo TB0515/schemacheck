@@ -1,0 +1,1 @@
+{"type":"object","properties":{"city":{"type":"string","description":"City"},"opts":{"type":"object","properties":{"deep":{"type":"boolean"}},"required":["deep"]}},"required":["city","opts"],"additionalProperties":false}

@@ -1,0 +1,37 @@
+{
+  "tools": [
+    {
+      "name": "search_issues",
+      "description": "Search issues in a repository",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "filter": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "closed"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "state"
+            ]
+          }
+        },
+        "required": [
+          "query",
+          "filter"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

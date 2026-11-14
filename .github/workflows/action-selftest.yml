@@ -1,0 +1,44 @@
+name: action-selftest
+
+# Exercises the composite action (action.yml) end to end: good input must pass,
+# bad input must make the action fail.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pass-case:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Action accepts a valid schema
+        uses: ./
+        with:
+          files: fixtures/action-selftest/pass-*.json
+          profile: all
+
+  fail-case:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Action should reject invalid schemas
+        id: bad
+        uses: ./
+        continue-on-error: true
+        with:
+          files: fixtures/action-selftest/fail-*.json
+          profile: openai-strict
+      - name: Assert the action failed
+        if: always()
+        env:
+          OUTCOME: ${{ steps.bad.outcome }}
+        run: |
+          echo "action outcome: $OUTCOME"
+          if [ "${{ steps.bad.outcome }}" != "failure" ]; then
+            echo "::error::Action did not fail on invalid fixtures (outcome=$OUTCOME)"
+            exit 1
+          fi
