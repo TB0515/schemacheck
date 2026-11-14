@@ -1,8 +1,10 @@
 """Anthropic tool `input_schema` rules. `anthropic` = non-strict; `anthropic-strict` = strict tools.
 
 Cited URLs:
-- https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use (ANT001, ANT002)
-- https://platform.claude.com/docs/en/build-with-claude/structured-outputs (ANT003-ANT006)
+- https://platform.claude.com/docs/en/api/messages/create (ANT001: `input_schema` has `type: "object"`)
+- https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools (ANT002)
+- https://platform.claude.com/docs/en/build-with-claude/structured-outputs (ANT003-ANT006,
+  ANT010-ANT011: "JSON Schema limitations" and "Schema complexity limits")
 
 Not implemented: ANT007 (numeric limits unverified), ANT008 (unverified), ANT009 (a note:
 unsupported features return 400, nothing separate to check).
@@ -16,7 +18,8 @@ from schemacheck.rules import Ctx, Rule, register, resolve_ref
 from schemacheck.rules.openai_strict import is_object
 from schemacheck.walk import walk
 
-TU = "https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use"
+API = "https://platform.claude.com/docs/en/api/messages/create"
+TU = "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools"
 SO = "https://platform.claude.com/docs/en/build-with-claude/structured-outputs"
 NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
 FORMATS = {
@@ -102,6 +105,30 @@ def _ant005(node: dict, path: str, ctx: Ctx) -> list[tuple[str, str]]:
     return out
 
 
+MAX_OPTIONAL = 24
+MAX_UNION = 16
+
+
+def _ant010(node: dict, path: str, ctx: Ctx) -> list[tuple[str, str]]:
+    if ctx.depth != 0:
+        return []
+    n = 0
+    for sub, _, _ in walk(node):
+        props = sub.get("properties")
+        if isinstance(props, dict):
+            req = sub.get("required")
+            req = req if isinstance(req, list) else []
+            n += sum(1 for k in props if k not in req)
+    return [(path, f"{n} optional parameters in this schema")] if n > MAX_OPTIONAL else []
+
+
+def _ant011(node: dict, path: str, ctx: Ctx) -> list[tuple[str, str]]:
+    if ctx.depth != 0:
+        return []
+    n = sum(1 for sub, _, _ in walk(node) if "anyOf" in sub or isinstance(sub.get("type"), list))
+    return [(path, f"{n} union-typed parameters in this schema")] if n > MAX_UNION else []
+
+
 def _ant006(node: dict, path: str, ctx: Ctx) -> list[tuple[str, str]]:
     fmt = node.get("format")
     if isinstance(fmt, str) and fmt not in FORMATS:
@@ -112,7 +139,7 @@ def _ant006(node: dict, path: str, ctx: Ctx) -> list[tuple[str, str]]:
 register(Rule(
     "ANT001", "anthropic", "error",
     "input_schema must be a JSON Schema object (type: object at the root)",
-    TU, True, False, _ant001,
+    API, True, True, _ant001,
 ))
 register(Rule(
     "ANT002", "anthropic", "error",
@@ -122,20 +149,32 @@ register(Rule(
 register(Rule(
     "ANT003", "anthropic-strict", "error",
     "Strict tools require additionalProperties: false on every object",
-    SO, True, False, _ant003,
+    SO, True, True, _ant003,
 ))
 register(Rule(
     "ANT004", "anthropic-strict", "error",
     "Strict tools do not support numeric/string/array size constraints",
-    SO, True, False, _ant004,
+    SO, True, True, _ant004,
 ))
 register(Rule(
     "ANT005", "anthropic-strict", "error",
     "Strict tools do not support recursive schemas, external $ref, or allOf with $ref",
-    SO, False, False, _ant005,
+    SO, False, True, _ant005,
 ))
 register(Rule(
     "ANT006", "anthropic-strict", "error",
     "Strict tools only support a fixed list of string formats",
-    SO, True, False, _ant006,
+    SO, True, True, _ant006,
+))
+register(Rule(
+    "ANT010", "anthropic-strict", "error",
+    f"More than {MAX_OPTIONAL} optional parameters (not in required); the limit is a total across "
+    "all strict schemas in one request, and this checks one schema",
+    SO, False, True, _ant010,
+))
+register(Rule(
+    "ANT011", "anthropic-strict", "error",
+    f"More than {MAX_UNION} parameters use anyOf or type arrays; the limit is a total across "
+    "all strict schemas in one request, and this checks one schema",
+    SO, False, True, _ant011,
 ))

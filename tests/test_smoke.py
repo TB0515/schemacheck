@@ -16,7 +16,7 @@ def run(*args):
 def test_version():
     r = run("--version")
     assert r.returncode == 0
-    assert r.stdout.strip() == schemacheck.__version__ == "0.1.0"
+    assert r.stdout.strip() == schemacheck.__version__ == "0.2.0"
 
 
 def test_invalid_json_exits_2(tmp_path):

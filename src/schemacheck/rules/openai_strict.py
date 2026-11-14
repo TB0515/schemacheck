@@ -3,7 +3,8 @@
 Cited URLs:
 - https://developers.openai.com/api/docs/guides/structured-outputs
 - https://developers.openai.com/api/docs/guides/function-calling
-- https://github.com/modelcontextprotocol/typescript-sdk/pull/1082 (OAI007, real failing case)
+- https://github.com/modelcontextprotocol/typescript-sdk/pull/1082 (OAI007: third-party report only,
+  the docs never state the restriction, so OAI007 is a warning)
 
 Not implemented: OAI003 (advice for the OAI002 fix), OAI006 (supported, no rule),
 OAI009 (unlisted `format` rejection is unverified), OAI010 (fine-tuned models only),
@@ -13,10 +14,9 @@ OAI011/OAI012 (unverified).
 from __future__ import annotations
 
 from schemacheck.rules import Ctx, Rule, register
-from schemacheck.walk import escape
+from schemacheck.walk import escape, walk
 
 SO = "https://developers.openai.com/api/docs/guides/structured-outputs"
-PR1082 = "https://github.com/modelcontextprotocol/typescript-sdk/pull/1082"
 P = "openai-strict"
 
 
@@ -75,6 +75,43 @@ def _oai008(node: dict, path: str, ctx: Ctx) -> list[tuple[str, str]]:
     return []
 
 
+MAX_PROPERTIES = 5000
+MAX_ENUM_VALUES = 1000
+MAX_STRING_CHARS = 120_000
+
+
+def _oai013(node: dict, path: str, ctx: Ctx) -> list[tuple[str, str]]:
+    if ctx.depth != 0:
+        return []
+    n = sum(
+        len(sub["properties"]) for sub, _, _ in walk(node) if isinstance(sub.get("properties"), dict)
+    )
+    return [(path, f"{n} properties")] if n > MAX_PROPERTIES else []
+
+
+def _oai014(node: dict, path: str, ctx: Ctx) -> list[tuple[str, str]]:
+    if ctx.depth != 0:
+        return []
+    n = sum(len(sub["enum"]) for sub, _, _ in walk(node) if isinstance(sub.get("enum"), list))
+    return [(path, f"{n} enum values")] if n > MAX_ENUM_VALUES else []
+
+
+def _oai015(node: dict, path: str, ctx: Ctx) -> list[tuple[str, str]]:
+    """Total length of property names, definition names, enum values and const values."""
+    if ctx.depth != 0:
+        return []
+    n = 0
+    for sub, _, _ in walk(node):
+        for key in ("properties", "$defs", "definitions"):
+            if isinstance(sub.get(key), dict):
+                n += sum(len(str(k)) for k in sub[key])
+        if isinstance(sub.get("enum"), list):
+            n += sum(len(v) for v in sub["enum"] if isinstance(v, str))
+        if isinstance(sub.get("const"), str):
+            n += len(sub["const"])
+    return [(path, f"{n} characters")] if n > MAX_STRING_CHARS else []
+
+
 register(Rule(
     "OAI001", P, "error",
     "Every object needs additionalProperties: false in OpenAI strict mode",
@@ -97,12 +134,29 @@ register(Rule(
     SO, False, True, _oai005,
 ))
 register(Rule(
-    "OAI007", P, "error",
-    "$ref must point at a top-level definition ($defs or definitions) or the root '#'",
-    PR1082, True, True, _oai007,
+    "OAI007", P, "warning",
+    "Unverified: $ref other than the root '#' or a top-level $defs entry is not documented as "
+    "supported by OpenAI strict mode (only a third-party SDK PR reports a rejection)",
+    SO, True, False, _oai007,
 ))
 register(Rule(
     "OAI008", P, "error",
     "Schema nests more than 10 levels deep (OpenAI strict allows 10)",
     SO, False, True, _oai008,
+))
+register(Rule(
+    "OAI013", P, "error",
+    f"Schema has more than {MAX_PROPERTIES} object properties in total (OpenAI strict limit)",
+    SO, False, True, _oai013,
+))
+register(Rule(
+    "OAI014", P, "error",
+    f"Schema has more than {MAX_ENUM_VALUES} enum values in total (OpenAI strict limit)",
+    SO, False, True, _oai014,
+))
+register(Rule(
+    "OAI015", P, "error",
+    f"Total length of property names, definition names, enum values and const values exceeds "
+    f"{MAX_STRING_CHARS:,} characters (OpenAI strict limit)",
+    SO, False, True, _oai015,
 ))

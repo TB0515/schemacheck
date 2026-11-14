@@ -10,7 +10,46 @@ ROOT = Path(__file__).parent.parent
 FX = Path(__file__).parent / "fixtures" / "rules"
 
 
+def obj(props=None, required=None):
+    return {"type": "object", "properties": props or {},
+            "required": list(props if required is None else required),
+            "additionalProperties": False}
+
+
+def big_properties():
+    """5001 properties spread over nested objects (OAI013)."""
+    return obj({"a": obj({f"p{i}": {"type": "string"} for i in range(2500)}),
+                "b": obj({f"q{i}": {"type": "string"} for i in range(2500)})})
+
+
+def big_enums():
+    """1001 enum values over two enums (OAI014)."""
+    return obj({"a": {"enum": [f"v{i}" for i in range(500)]},
+                "b": {"enum": [f"w{i}" for i in range(501)]}})
+
+
+def long_strings():
+    """Property names + enum values + const total 120,001 chars (OAI015)."""
+    return obj({"n" * 60_000: {"enum": ["e" * 40_000, "f" * 19_999]}, "c": {"const": "xx"}})
+
+
+def optionals(n):
+    props = {f"o{i}": {"type": "string"} for i in range(n)}
+    return {"type": "object", "properties": props, "required": [], "additionalProperties": False}
+
+
+def unions(n):
+    props = {f"u{i}": {"anyOf": [{"type": "string"}, {"type": "null"}]} for i in range(n)}
+    return obj(props)
+
+
+GENERATED = {"OAI013": big_properties, "OAI014": big_enums, "OAI015": long_strings,
+             "ANT010": lambda: optionals(25), "ANT011": lambda: unions(17)}
+
+
 def load(name):
+    if name in GENERATED:
+        return GENERATED[name]()
     return json.loads((FX / f"{name}.json").read_text())
 
 
@@ -22,6 +61,9 @@ EXPECTED = {
     "OAI005": ({}, ["/allOf"]),
     "OAI007": ({}, ["/properties/a/$ref"]),
     "OAI008": ({}, ["/properties/p" * 10]),
+    "OAI013": ({}, [""]),
+    "OAI014": ({}, [""]),
+    "OAI015": ({}, [""]),
     "GEM001": ({}, ["/$schema"]),
     "GEM002": ({}, ["/properties/a/$ref", "/$defs"]),
     "GEM003": ({}, ["/properties/a/const", "/properties/b/enum"]),
@@ -35,6 +77,8 @@ EXPECTED = {
     "ANT005": ({}, ["/properties/ext/$ref", "/properties/c/allOf", "/properties/c/allOf/0/$ref",
                     "/properties/n/$ref", "/$defs/Node/properties/next/$ref"]),
     "ANT006": ({}, ["/properties/c/format"]),
+    "ANT010": ({}, [""]),
+    "ANT011": ({}, [""]),
 }
 BY_ID = {r.id: r for r in RULES}
 
@@ -61,6 +105,49 @@ def test_every_rule_has_https_doc_url_and_valid_fields():
         assert r.profile in PROFILES and r.severity in ("error", "warning")
         assert isinstance(r.verified, bool) and isinstance(r.fixable, bool)
         assert re.fullmatch(r"(OAI|GEM|ANT)\d{3}", r.id)
+
+
+def rules_fired(schema, profile):
+    return {i.rule for i in lint(schema, profile)}
+
+
+def test_openai_limits_boundaries():
+    ok_props = obj({"a": obj({f"p{i}": {"type": "string"} for i in range(2499)})})  # 2500 total
+    assert not rules_fired(ok_props, "openai-strict") & {"OAI013", "OAI014", "OAI015"}
+    exact = obj({f"p{i}": {"type": "string"} for i in range(5000)})
+    assert "OAI013" not in rules_fired(exact, "openai-strict")
+    assert "OAI013" in rules_fired(obj({f"p{i}": {"type": "string"} for i in range(5001)}),
+                                   "openai-strict")
+    assert "OAI014" not in rules_fired(obj({"a": {"enum": list(range(1000))}}), "openai-strict")
+    assert "OAI014" in rules_fired(obj({"a": {"enum": list(range(1001))}}), "openai-strict")
+    # 120,000 characters exactly is allowed
+    edge = obj({"n" * 60_000: {"enum": ["e" * 59_998]}, "c": {"const": "x"}})
+    assert "OAI015" not in rules_fired(edge, "openai-strict")
+
+
+def test_openai_limits_only_in_openai_profile():
+    for rid in ("OAI013", "OAI014", "OAI015"):
+        assert not {i.rule for i in lint(load(rid), "gemini")} & {rid}
+
+
+def test_anthropic_limits_boundaries():
+    assert "ANT010" not in rules_fired(optionals(24), "anthropic-strict")
+    assert "ANT010" in rules_fired(optionals(25), "anthropic-strict")
+    assert "ANT011" not in rules_fired(unions(16), "anthropic-strict")
+    assert "ANT011" in rules_fired(unions(17), "anthropic-strict")
+    mixed = obj({f"u{i}": {"type": ["string", "null"]} for i in range(17)})
+    assert "ANT011" in rules_fired(mixed, "anthropic-strict")
+    assert not rules_fired(optionals(25), "anthropic") & {"ANT010"}
+
+
+def test_every_error_rule_has_primary_source_and_verified():
+    secondary = ("github.com",)
+    for r in RULES:
+        if r.severity == "error":
+            assert r.verified, r.id
+            assert not any(h in r.doc_url for h in secondary), r.id
+        if any(h in r.doc_url for h in secondary):
+            assert r.severity == "warning", r.id
 
 
 def test_anthropic_profile_split():

@@ -22,9 +22,9 @@ Without cloning: `uvx --from git+https://github.com/TB0515/schemacheck schemache
 ```
 examples/tools.json:/tools/0/inputSchema: [openai-strict] OAI001 Every object needs additionalProperties: false in OpenAI strict mode (...)
 examples/tools.json:/tools/0/inputSchema/properties/filter: [openai-strict] OAI002 All keys in properties must be listed in required in OpenAI strict mode ('filter') (...)
-examples/tools.json:/tools/0/inputSchema/$schema: [gemini] GEM001 $schema is rejected by Gemini in function parameters (...)
-examples/tools.json:/tools/0/inputSchema/$defs: [gemini] GEM002 $ref / $defs are rejected by Gemini in function declarations; inline them ($defs) (...)
-examples/tools.json:/tools/0/inputSchema/properties/filter/$ref: [gemini] GEM002 ... ($ref)
+examples/tools.json:/tools/0/inputSchema/$schema: [gemini] GEM001 Unverified: $schema may be rejected by Gemini in function parameters (...)
+examples/tools.json:/tools/0/inputSchema/$defs: [gemini] GEM002 Unverified: $ref / $defs may be rejected by Gemini ... ($defs) (...)
+examples/tools.json:/tools/0/inputSchema/properties/filter/$ref: [gemini] GEM002 Unverified: ... ($ref)
 examples/tools.json:/tools/0/inputSchema/$defs/Filter: [openai-strict] OAI001 ...
 examples/tools.json:/tools/0/inputSchema/$defs/Filter/properties/state: [openai-strict] OAI002 ...
 ```
@@ -37,112 +37,43 @@ examples/tools.json:/tools/0/inputSchema/$defs/Filter/properties/state: [openai-
 
 [schemafit](https://github.com/OrionArchitekton/schemafit) is the closest existing tool, and it is more mature than we are. It repairs per provider; we produce one cross-provider output. What we offer on top:
 
-- **Rules cited and checked against the docs.** We compared all 18 rules to the providers' documentation and to schemafit's output: [docs/rule-verification.md](docs/rule-verification.md). Result: 8 CONFIRMED by a verbatim doc sentence, 10 WEAKLY SUPPORTED, 0 contradicted. That report was written by an AI agent; read it before trusting it.
+- **Rules cited and checked against the docs.** v0.1 compared all 18 rules to provider docs and schemafit ([docs/rule-verification.md](docs/rule-verification.md): 8 CONFIRMED, 10 WEAK). v0.2.0 re-checked the WEAK ones against the primary doc pages (see [CHANGELOG.md](CHANGELOG.md)): 3 upgraded to confirmed (ANT001, ANT005, ANT006), 7 downgraded to unverified warnings (GEM001-GEM006, OAI007), and 5 documented limit rules added (OAI013-OAI015, ANT010, ANT011). Reports were written by AI agents; read them before trusting them.
 - **Tool-envelope awareness**: OpenAI, Anthropic, MCP and Gemini wrappers, MCP `tools/list` results and JSON-RPC responses, with JSON Pointers into your original file.
 - **Checks schemafit did not flag in our fixtures**: tool-name rules (ANT002), `$schema` (GEM001), `const`/non-string `enum` for Gemini (GEM003). The same comparison shows schemafit flagging things we do not, such as `pattern` and `exclusiveMinimum` under Anthropic. We have not benchmarked beyond those fixtures.
 
-### Rules that are only WEAKLY SUPPORTED
+### Unverified rules (warnings only)
 
-"Weakly supported" means the only evidence is a third-party issue/PR, a summary-only doc read, or inference from the docs being silent. These rules may be too strict or too lenient:
-
-- **Gemini (all six, GEM001-GEM006)**: based on issue/PR reports and the Gemini field list. The docs are partly conflicting: Gemini's `parametersJsonSchema` accepts fuller JSON Schema, so `$ref`/`$defs`/type arrays may be fine on that path. GEM005 (`anyOf`) and GEM006 are warnings for this reason.
-- **OAI007** (nested `$ref` forms): backed by a real OpenAI error quoted in an SDK PR, not by the OpenAI docs.
-- **ANT001** (root `type: object`), **ANT005** (recursive/external `$ref`, `allOf`+`$ref`), **ANT006** (`format` list): the Anthropic page text was only available as a summary.
-
-CONFIRMED: OAI001, OAI002, OAI004, OAI005, OAI008, ANT002, ANT003, ANT004. Known gaps: we do not check OpenAI's total property/enum-size limits, Anthropic's complexity limits, or objects with no `properties`. Details in the report.
-
-## Use in CI (GitHub Action)
-
-```yaml
-# .github/workflows/schemacheck.yml
-name: schemacheck
-on: [push, pull_request]
-jobs:
-  schemacheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: TB0515/schemacheck@main
-        with:
-          files: "schemas/*.json tools.json"   # space-separated, globs allowed
-          profile: all                         # optional: openai-strict | gemini | anthropic | anthropic-strict | all
-```
-
-The job fails when schemacheck exits 1 (any error-severity issue). The action is a composite action that installs `uv` and runs the CLI from the action's own checkout. **Not tested on a real GitHub runner** (we cannot run workflows from here); see "Limitations of the action" under Status.
-
-## Why
-
-One provider rejects schemas that another accepts. At least four projects have written private sanitizers for this (MCP TypeScript SDK PR #1082, opencode PR #12911, livekit/agents #4334). schemacheck checks all providers in one pass and produces one fixed output.
-
-## Install / run
-
-Straight from GitHub (distributed from GitHub only, not PyPI):
-
-```sh
-uvx --from git+https://github.com/TB0515/schemacheck schemacheck tools.json
-pipx run --spec git+https://github.com/TB0515/schemacheck schemacheck tools.json
-```
-
-From a checkout: `uv run schemacheck tools.json`.
-
-## Usage
-
-```
-schemacheck [--profile openai-strict|gemini|anthropic|anthropic-strict|all] [--fix] [--json] FILE...
-```
-
-`FILE` may be `-` for stdin. Default profile is `all` (= `openai-strict` + `gemini` + `anthropic`). `anthropic-strict` (Anthropic strict tools) is opt-in because it forbids constraints like `minimum` that plain Anthropic tools accept.
-
-**Accepted inputs** (auto-detected): a bare JSON Schema; a list of tools in OpenAI (chat `{"type":"function","function":{...}}` or Responses-style flat), Anthropic (`input_schema`), MCP (`inputSchema`) or Gemini (`functionDeclarations`) form; an MCP `tools/list` result `{"tools":[...]}`, a JSON-RPC response `{"result":{"tools":[...]}}`, or a request body with a `tools` array.
-
-**Exit codes:** `0` no errors, `1` at least one error-severity issue, `2` usage error, unreadable file, invalid JSON, or unrecognized shape (nothing else is printed to stdout in that case). Warning-severity issues (GEM005, GEM006) are printed but do not change the exit code.
-
-### Check
-
-```
-$ schemacheck tools.json
-tools.json:/tools/0/inputSchema/properties/opts: [openai-strict] OAI001 Every object needs additionalProperties: false in OpenAI strict mode (https://developers.openai.com/api/docs/guides/structured-outputs)
-```
-
-Format: `FILE:/json/pointer: [profile] RULE-ID message (doc URL)`. The pointer points into the original file, envelope included.
-
-`--json` prints `{"issues":[{"file","tool","path","profile","rule","message","doc_url","fixable"}]}`; a clean run prints exactly `{"issues":[]}`.
-
-### Fix
-
-`--fix` writes the fixed document to **stdout** and never edits files. The outer shape is preserved (MCP, JSON-RPC, OpenAI, Anthropic, Gemini or bare). With several files, the output is a JSON object keyed by file name. Unfixed issues go to stderr (`unfixed: ...`) with exit 1; lossy changes are listed as `note:` lines on stderr.
-
-```sh
-schemacheck --fix tools.json > tools.fixed.json
-schemacheck --profile all tools.fixed.json   # re-check
-```
-
-What `--fix` does, only for rules marked fixable: adds `additionalProperties: false`; lists every property in `required` (note: this makes optional parameters required, as OpenAI strict mode demands; it does not add nullability); inlines non-recursive local `$ref`s and removes `$defs`; removes `$schema`; turns a string `const` into a one-value `enum`; renames `oneOf` to `anyOf`; collapses `["T","null"]` to `T` + `nullable: true` for Gemini; drops keywords the provider does not support (Gemini-unknown keywords, `anthropic-strict` size constraints/formats and non-enum `const`/non-string `enum`); adds a missing root `type: object`; replaces illegal characters in tool names with `_`. It does not fix recursive or external `$ref`, root `anyOf`, unsupported combinators under OpenAI, or nesting depth; those are reported. The fix is idempotent.
+No primary doc confirms these, so they are warnings and never change the exit code: GEM001-GEM006 (Gemini docs say only "a subset of the OpenAPI schema is supported" and never list `$schema`, `$ref`, `const` or `oneOf` as rejected; the structured-output guide shows `$defs`/`$ref`, `anyOf`, numeric enums and type arrays working) and OAI007 (OpenAI documents `$ref` and recursion as supported; the nested-`$ref` rejection comes only from an SDK PR). Known gaps: OpenAI's 15,000-character enum sub-limit (applies above 250 enum values) is not checked; the Anthropic optional-parameter and union limits are totals across a whole request, and schemacheck checks one schema at a time, so ANT010/ANT011 can only prove a single schema is already over the limit. Objects with no `properties` are not checked.
 
 ## Rules
 
-Every rule cites an official doc or a real failing issue/PR. Full details in [docs/rules.md](docs/rules.md). "Verified = no" means the source quote was summary-only or the rule is inferred.
+Every `error` rule cites an official provider doc page (re-checked against the live docs for v0.2.0). Rules with status `unverified` are warnings only: no primary doc confirms the rejection, so schemacheck will not fail your build on them by severity. Full details in [docs/rules.md](docs/rules.md).
 
-| ID | Profile | Severity | Rule | Fixable | Source |
-|---|---|---|---|---|---|
-| OAI001 | openai-strict | error | every object needs `additionalProperties: false` | yes | [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) |
-| OAI002 | openai-strict | error | every property must be in `required` | yes | [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) |
-| OAI004 | openai-strict | error | root must be an object, no root `anyOf` | no | [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) |
-| OAI005 | openai-strict | error | `allOf`, `not`, `dependentRequired`, `dependentSchemas`, `if`/`then`/`else` unsupported | no | [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) |
-| OAI007 | openai-strict | error | `$ref` must be `#`, `#/$defs/X` or `#/definitions/X` | yes | [MCP TS SDK PR #1082](https://github.com/modelcontextprotocol/typescript-sdk/pull/1082) |
-| OAI008 | openai-strict | error | more than 10 levels of nesting | no | [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) |
-| GEM001 | gemini | error | `$schema` rejected | yes | [livekit/agents #4334](https://github.com/livekit/agents/issues/4334) |
-| GEM002 | gemini | error | `$ref` / `$defs` rejected | yes | [opencode PR #12911](https://github.com/anomalyco/opencode/pull/12911) |
-| GEM003 | gemini | error | `const` rejected; `enum` only for strings | yes | [opencode PR #12911](https://github.com/anomalyco/opencode/pull/12911) |
-| GEM004 | gemini | error | `oneOf` rejected | yes | [opencode PR #12911](https://github.com/anomalyco/opencode/pull/12911) |
-| GEM005 | gemini | warning | `anyOf` reported rejected/limited (verified = no) | no | [opencode PR #12911](https://github.com/anomalyco/opencode/pull/12911) |
-| GEM006 | gemini | warning | keyword not in Gemini's Schema field list (verified = no) | yes | [Gemini API reference](https://aistudio.google.com/api-reference/caching) |
-| ANT001 | anthropic | error | root must be `type: object` (verified = no) | yes | [Anthropic tool use](https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use) |
-| ANT002 | anthropic | error | tool name must match `^[a-zA-Z0-9_-]{1,128}$` | yes | [Anthropic tool use](https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use) |
-| ANT003 | anthropic-strict | error | `additionalProperties: false` on every object (verified = no) | yes | [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) |
-| ANT004 | anthropic-strict | error | no `minimum`/`maximum`/`multipleOf`/`minLength`/`maxLength`, `minItems` only 0/1 (verified = no) | yes | [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) |
-| ANT005 | anthropic-strict | error | no recursive schemas, external `$ref`, or `allOf` with `$ref` (verified = no) | no | [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) |
-| ANT006 | anthropic-strict | error | only a fixed list of string `format`s (verified = no) | yes | [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) |
+| ID | Profile | Severity | Status | Rule | Fixable | Source |
+|---|---|---|---|---|---|---|
+| OAI001 | openai-strict | error | confirmed | Every object needs additionalProperties: false in OpenAI strict mode | yes | <https://developers.openai.com/api/docs/guides/structured-outputs> |
+| OAI002 | openai-strict | error | confirmed | All keys in properties must be listed in required in OpenAI strict mode | yes | <https://developers.openai.com/api/docs/guides/structured-outputs> |
+| OAI004 | openai-strict | error | confirmed | Root schema must be an object and must not use anyOf in OpenAI strict mode | no | <https://developers.openai.com/api/docs/guides/structured-outputs> |
+| OAI005 | openai-strict | error | confirmed | Keyword not supported by OpenAI strict mode (allOf, not, dependentRequired, dependentSchemas, if, then, else) | no | <https://developers.openai.com/api/docs/guides/structured-outputs> |
+| OAI007 | openai-strict | warning | unverified | Unverified: $ref other than the root '#' or a top-level $defs entry is not documented as supported by OpenAI strict mode (only a third-party SDK PR reports a rejection) | yes | <https://developers.openai.com/api/docs/guides/structured-outputs> |
+| OAI008 | openai-strict | error | confirmed | Schema nests more than 10 levels deep (OpenAI strict allows 10) | no | <https://developers.openai.com/api/docs/guides/structured-outputs> |
+| OAI013 | openai-strict | error | confirmed | Schema has more than 5000 object properties in total (OpenAI strict limit) | no | <https://developers.openai.com/api/docs/guides/structured-outputs> |
+| OAI014 | openai-strict | error | confirmed | Schema has more than 1000 enum values in total (OpenAI strict limit) | no | <https://developers.openai.com/api/docs/guides/structured-outputs> |
+| OAI015 | openai-strict | error | confirmed | Total length of property names, definition names, enum values and const values exceeds 120,000 characters (OpenAI strict limit) | no | <https://developers.openai.com/api/docs/guides/structured-outputs> |
+| GEM001 | gemini | warning | unverified | Unverified: $schema may be rejected by Gemini in function parameters (only a third-party report; the docs say only a subset of the OpenAPI schema is supported) | yes | <https://aistudio.google.com/docs/function-calling> |
+| GEM002 | gemini | warning | unverified | Unverified: $ref / $defs may be rejected by Gemini in function declarations; inline them (only a third-party report; the structured-output guide shows $defs/$ref working) | yes | <https://aistudio.google.com/docs/function-calling> |
+| GEM003 | gemini | warning | unverified | Unverified: Gemini may reject const, and the Schema reference documents enum only for STRING (only a third-party report; the structured-output guide lists numeric enums) | yes | <https://aistudio.google.com/api-reference/caching> |
+| GEM004 | gemini | warning | unverified | Unverified: oneOf may be rejected by Gemini (only a third-party report; oneOf is absent from the documented Schema field list) | yes | <https://aistudio.google.com/api-reference/caching> |
+| GEM005 | gemini | warning | unverified | Unverified: anyOf is documented as supported by Gemini but adds branching that can exceed complexity limits; third-party reports of rejection exist | no | <https://aistudio.google.com/docs/structured-output> |
+| GEM006 | gemini | warning | unverified | Unverified: Keyword is not in Gemini's documented Schema field list (the docs say only a subset of the OpenAPI schema is supported); type arrays are accepted by the structured-output guide | yes | <https://aistudio.google.com/docs/function-calling> |
+| ANT001 | anthropic | error | confirmed | input_schema must be a JSON Schema object (type: object at the root) | yes | <https://platform.claude.com/docs/en/api/messages/create> |
+| ANT002 | anthropic | error | confirmed | Tool name must match ^[a-zA-Z0-9_-]{1,128}$ | yes | <https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools> |
+| ANT003 | anthropic-strict | error | confirmed | Strict tools require additionalProperties: false on every object | yes | <https://platform.claude.com/docs/en/build-with-claude/structured-outputs> |
+| ANT004 | anthropic-strict | error | confirmed | Strict tools do not support numeric/string/array size constraints | yes | <https://platform.claude.com/docs/en/build-with-claude/structured-outputs> |
+| ANT005 | anthropic-strict | error | confirmed | Strict tools do not support recursive schemas, external $ref, or allOf with $ref | no | <https://platform.claude.com/docs/en/build-with-claude/structured-outputs> |
+| ANT006 | anthropic-strict | error | confirmed | Strict tools only support a fixed list of string formats | yes | <https://platform.claude.com/docs/en/build-with-claude/structured-outputs> |
+| ANT010 | anthropic-strict | error | confirmed | More than 24 optional parameters (not in required); the limit is a total across all strict schemas in one request, and this checks one schema | no | <https://platform.claude.com/docs/en/build-with-claude/structured-outputs> |
+| ANT011 | anthropic-strict | error | confirmed | More than 16 parameters use anyOf or type arrays; the limit is a total across all strict schemas in one request, and this checks one schema | no | <https://platform.claude.com/docs/en/build-with-claude/structured-outputs> |
 
 ## Prior art
 
@@ -161,7 +92,7 @@ Where schemacheck differs:
 
 ## Status
 
-Early (v0.1). Rules marked "verified = no" are inferred or summary-sourced and may change.
+Early (v0.2). Rules with status `unverified` are warnings and may change.
 
 **Limitations of the action:** `action.yml` has not run on a real GitHub runner. Locally we ran its exact command line (`schemacheck --profile "$SC_PROFILE" $SC_FILES`) via `uv run` (exit 1 on `examples/tools.json`, exit 0 on the fixed file) and parsed the YAML. Untested: `astral-sh/setup-uv@v5` inside a composite action, `uvx --from "$GITHUB_ACTION_PATH"` on a runner (uvx was blocked in our sandbox), and glob expansion on a runner. It has no `--fix` mode.
 

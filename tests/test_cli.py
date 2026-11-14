@@ -136,7 +136,7 @@ def test_fix_round_trip_and_idempotent(path):
     doc = json.loads(path.read_text())
     fixed, _ = fix_document(doc, set(ALL))
     assert doc == json.loads(path.read_text())  # input object untouched
-    remaining = [i for i in check_document(fixed, ALL) if i.fixable and i.severity == "error"]
+    remaining = [i for i in check_document(fixed, ALL) if i.fixable]
     if path.stem in KNOWN_UNFIXABLE:
         assert remaining
     else:
@@ -146,7 +146,7 @@ def test_fix_round_trip_and_idempotent(path):
 
 
 def test_fix_cli_exit_1_reports_unfixable_on_stderr():
-    r = run("--fix", str(COMP / "f4-nested-ref-anyOf.json"))
+    r = run("--fix", "--profile", "anthropic-strict", str(COMP / "f4-nested-ref-anyOf.json"))
     assert r.returncode == 1
     assert "unfixed:" in r.stderr
     json.loads(r.stdout)
